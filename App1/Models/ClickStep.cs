@@ -35,6 +35,7 @@ namespace App1.Models
                 OnPropertyChanged(nameof(TypeText));
                 OnPropertyChanged(nameof(IsClickStep));
                 OnPropertyChanged(nameof(IsDelayStep));
+                OnPropertyChanged(nameof(CoordVisibility));
             }
         }
 
@@ -84,6 +85,9 @@ namespace App1.Models
 
         public bool IsClickStep => Type == "Click";
         public bool IsDelayStep => Type == "Delay";
+
+        public Microsoft.UI.Xaml.Visibility CoordVisibility =>
+            IsClickStep ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
         public string IndexText => $"#{Index}";
         public string TypeText => Type == "Delay" ? "Delay" : "Click";

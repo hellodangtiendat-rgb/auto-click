@@ -29,12 +29,6 @@
                            FontWeight="Bold"
                            Margin="0,0,0,16"/>
 
-                <Button x:Name="CoordinateMenuButton"
-                        Content="📍 Lấy tọa độ"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Left"
-                        Click="CoordinateMenuButton_Click"/>
-
                 <Button x:Name="ClickScriptMenuButton"
                         Content="📋 Kịch bản click"
                         HorizontalAlignment="Stretch"
@@ -51,351 +45,324 @@
         </Border>
 
         <!-- NỘI DUNG BÊN PHẢI -->
-        <Grid Grid.Column="1" Padding="24">
-
-            <!-- PAGE: LẤY TỌA ĐỘ -->
-            <StackPanel x:Name="CoordinatePage" Spacing="16">
-
-                <TextBlock Text="Lấy tọa độ chuột"
-                           FontSize="28"
-                           FontWeight="Bold"
-                           Foreground="White"/>
-
-                <TextBlock Text="Theo dõi tọa độ chuột hiện tại trên màn hình."
-                           FontSize="16"
-                           Foreground="#CCCCCC"/>
-
-                <Border Background="#2D2D30"
-                        CornerRadius="8"
-                        Padding="20"
-                        MaxWidth="560"
-                        HorizontalAlignment="Left">
-
-                    <StackPanel Spacing="12">
-
-                        <TextBlock Text="Tọa độ hiện tại"
-                                   FontSize="18"
-                                   FontWeight="SemiBold"
-                                   Foreground="White"/>
-
-                        <Grid ColumnDefinitions="*,*"
-                              ColumnSpacing="12">
-
-                            <Border Grid.Column="0"
-                                    Background="#3A3A3D"
-                                    CornerRadius="6"
-                                    Padding="16">
-                                <StackPanel>
-                                    <TextBlock Text="X"
-                                               Foreground="#AAAAAA"
-                                               FontSize="14"/>
-                                    <TextBlock x:Name="XTextBlock"
-                                               Text="0"
-                                               Foreground="White"
-                                               FontSize="32"
-                                               FontWeight="Bold"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Grid.Column="1"
-                                    Background="#3A3A3D"
-                                    CornerRadius="6"
-                                    Padding="16">
-                                <StackPanel>
-                                    <TextBlock Text="Y"
-                                               Foreground="#AAAAAA"
-                                               FontSize="14"/>
-                                    <TextBlock x:Name="YTextBlock"
-                                               Text="0"
-                                               Foreground="White"
-                                               FontSize="32"
-                                               FontWeight="Bold"/>
-                                </StackPanel>
-                            </Border>
-
-                        </Grid>
-
-                        <TextBox x:Name="CoordinateTextBox"
-                                 Text="X: 0, Y: 0"
-                                 IsReadOnly="True"
-                                 FontSize="18"/>
-
-                        <TextBlock Text="Phím tắt: F6 = Thêm vị trí chuột vào kịch bản hiện tại, F7 = Start/Stop theo dõi, F8 = Start/Stop auto click"
-                                   Foreground="#CCCCCC"
-                                   FontSize="14"/>
-
-                        <TextBlock x:Name="StatusTextBlock"
-                                   Text="Đang theo dõi tọa độ..."
-                                   Foreground="#7CFC00"
-                                   FontSize="14"/>
-
-                        <StackPanel Orientation="Horizontal"
-                                    Spacing="12">
-
-                            <Button x:Name="StartStopButton"
-                                    Content="Stop"
-                                    Width="120"
-                                    Click="StartStopButton_Click"/>
-
-                            <Button Content="Copy tọa độ"
-                                    Width="140"
-                                    Click="CopyButton_Click"/>
-
-                        </StackPanel>
-
-                    </StackPanel>
-                </Border>
-            </StackPanel>
+        <Grid Grid.Column="1">
 
             <!-- PAGE: KỊCH BẢN CLICK -->
             <Grid x:Name="ClickScriptPage"
-                  Visibility="Collapsed"
-                  RowDefinitions="Auto,*"
-                  RowSpacing="16">
+                  ColumnDefinitions="260,*">
 
-                <StackPanel Grid.Row="0" Spacing="8">
-                    <TextBlock Text="Kịch bản click"
-                               FontSize="28"
-                               FontWeight="Bold"
-                               Foreground="White"/>
+                <!-- SIDEBAR: DANH SÁCH KỊCH BẢN -->
+                <Border Grid.Column="0"
+                        Background="#1A1A1A"
+                        BorderBrush="#333333"
+                        BorderThickness="0,0,1,0">
+                    <Grid RowDefinitions="Auto,*">
 
-                    <TextBlock Text="Tạo kịch bản, thêm điểm click thủ công hoặc dùng phím tắt F6 tại vị trí muốn click."
-                               FontSize="16"
-                               Foreground="#CCCCCC"/>
+                        <!-- Sidebar header -->
+                        <Border Grid.Row="0"
+                                Padding="10,11"
+                                BorderBrush="#333333"
+                                BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="Auto,*,Auto"
+                                  ColumnSpacing="4">
 
-                    <TextBlock Text="Phím tắt: F6 = Thêm vị trí chuột vào kịch bản, F8 = Chạy/Dừng kịch bản"
-                               FontSize="14"
-                               Foreground="#CCCCCC"/>
-                </StackPanel>
+                                <!-- Toggle button ở đầu tiên — luôn hiện, không bị che -->
+                                <Button x:Name="SidebarToggleButton"
+                                        Grid.Column="0"
+                                        Content="«"
+                                        Padding="4,2"
+                                        FontSize="13"
+                                        VerticalAlignment="Center"
+                                        Click="SidebarToggleButton_Click"/>
 
-                <Grid Grid.Row="1">
+                                <!-- Title (ẩn khi thu gọn) -->
+                                <TextBlock x:Name="SidebarTitleText"
+                                           Grid.Column="1"
+                                           Text="KỊCH BẢN"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="#888888"
+                                           CharacterSpacing="80"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
 
-                    <!-- MÀN HÌNH TẠO KỊCH BẢN -->
-                    <Border x:Name="CreateScriptPanel"
-                            Background="#2D2D30"
-                            CornerRadius="8"
-                            Padding="20"
-                            MaxWidth="520"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Top">
+                                <!-- + button (ẩn khi thu gọn) -->
+                                <Button x:Name="SidebarNewScriptButton"
+                                        Grid.Column="2"
+                                        Content="+"
+                                        Padding="5,1"
+                                        FontSize="16"
+                                        FontWeight="Light"
+                                        VerticalAlignment="Center"
+                                        Click="NewScriptDialogButton_Click"/>
+                            </Grid>
+                        </Border>
 
-                        <StackPanel Spacing="14">
+                        <!-- Script list -->
+                        <ListView x:Name="SavedScriptsListView"
+                                  Grid.Row="1"
+                                  ItemsSource="{x:Bind ScriptList, Mode=OneWay}"
+                                  SelectionMode="Single"
+                                  SelectionChanged="SavedScriptsListView_SelectionChanged">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="MinHeight" Value="0"/>
+                                    <Setter Property="FocusVisualMargin" Value="-1"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListViewItem">
+                                                <ListViewItemPresenter
+                                                    ContentTransitions="{TemplateBinding ContentTransitions}"
+                                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                    Content="{TemplateBinding Content}"
+                                                    Padding="{TemplateBinding Padding}"
+                                                    PointerOverBackground="#2E2E2E"
+                                                    PointerOverForeground="White"
+                                                    SelectedBackground="#1B4F9A"
+                                                    SelectedForeground="White"
+                                                    SelectedPointerOverBackground="#16427F"/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:ScriptListItem">
+                                    <Grid Padding="14,9"
+                                          ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{x:Bind Name}"
+                                                   Foreground="#CCCCCC"
+                                                   FontSize="14"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1"
+                                                    Orientation="Horizontal"
+                                                    Spacing="4"
+                                                    Visibility="{x:Bind ActionVisibility, Mode=OneWay}">
+                                            <Button Content="Đổi tên"
+                                                    Tag="{x:Bind}"
+                                                    Padding="8,3"
+                                                    FontSize="12"
+                                                    Click="InlineRenameButton_Click"/>
+                                            <Button Content="Xóa"
+                                                    Tag="{x:Bind}"
+                                                    Padding="8,3"
+                                                    FontSize="12"
+                                                    Click="InlineDeleteButton_Click"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
 
-                            <TextBlock Text="Tạo kịch bản mới"
-                                       FontSize="22"
-                                       FontWeight="SemiBold"
-                                       Foreground="White"/>
+                    </Grid>
+                </Border>
 
-                            <TextBlock Text="Đầu tiên hãy đặt tên cho kịch bản click."
-                                       Foreground="#CCCCCC"
-                                       FontSize="14"/>
+                <!-- MAIN: EDITOR AREA -->
+                <Grid Grid.Column="1">
 
-                            <TextBox x:Name="ScriptNameTextBox"
-                                     Header="Tên kịch bản"
-                                     PlaceholderText="Ví dụ: Login tool, Farm task, Click mở app..."/>
+                    <!-- Placeholder khi chưa mở kịch bản -->
+                    <StackPanel x:Name="ScriptEditorPlaceholder"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Spacing="10">
+                        <TextBlock Text="Chọn kịch bản để mở, hoặc tạo kịch bản mới"
+                                   FontSize="15"
+                                   Foreground="#555555"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="Bấm đúp vào tên kịch bản để mở nhanh"
+                                   FontSize="13"
+                                   Foreground="#444444"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
 
-                            <Button Content="Tạo kịch bản"
-                                    Width="150"
-                                    Click="CreateScriptButton_Click"/>
-
-                        </StackPanel>
-                    </Border>
-
-                    <!-- MÀN HÌNH CHỈNH SỬA KỊCH BẢN -->
+                    <!-- Editor (hiện khi có kịch bản đang mở) -->
                     <Grid x:Name="ScriptEditorPanel"
                           Visibility="Collapsed"
-                          ColumnDefinitions="*,360"
-                          ColumnSpacing="16">
+                          RowDefinitions="Auto,*">
 
-                        <!-- DANH SÁCH ĐIỂM CLICK -->
-                        <Border Grid.Column="0"
-                                Background="#2D2D30"
-                                CornerRadius="8"
-                                Padding="16">
-
-                            <Grid RowDefinitions="Auto,Auto,Auto,*"
-                                  RowSpacing="12">
-
-                                <StackPanel Grid.Row="0" Spacing="4">
-                                    <TextBlock x:Name="CurrentScriptNameTextBlock"
-                                               Text="Kịch bản: Chưa có"
-                                               FontSize="22"
+                        <!-- Header bar -->
+                        <Border Grid.Row="0"
+                                Background="#252526"
+                                BorderBrush="#333333"
+                                BorderThickness="0,0,0,1"
+                                Padding="20,11">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Orientation="Horizontal"
+                                            Spacing="12"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind ScriptVM.ScriptDisplayName, Mode=OneWay}"
+                                               FontSize="16"
                                                FontWeight="SemiBold"
-                                               Foreground="White"/>
-
-                                    <TextBlock Text="F6 sẽ tự động thêm vị trí chuột hiện tại vào kịch bản này."
-                                               FontSize="14"
-                                               Foreground="#CCCCCC"/>
+                                               Foreground="White"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{x:Bind ScriptVM.AutoSaveStatus, Mode=OneWay}"
+                                               FontSize="12"
+                                               Foreground="#777777"
+                                               VerticalAlignment="Center"/>
                                 </StackPanel>
+                                <TextBlock x:Name="HotkeyHintTextBlock"
+                                           Grid.Column="1"
+                                           Text=""
+                                           FontSize="12"
+                                           Foreground="#555555"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
 
-                                <Grid Grid.Row="1"
-                                      ColumnDefinitions="*,*,*,Auto"
-                                      ColumnSpacing="8">
+                        <!-- Body: Steps list + Run panel -->
+                        <Grid Grid.Row="1"
+                              ColumnDefinitions="*,290">
 
-                                    <TextBox x:Name="InputXTextBox"
-         Grid.Column="0"
-         Header="X"
-         Text="0"/>
+                            <!-- Steps area -->
+                            <Grid Grid.Column="0"
+                                  Padding="16"
+                                  RowDefinitions="Auto,Auto,*"
+                                  RowSpacing="10">
 
-                                    <TextBox x:Name="InputYTextBox"
-         Grid.Column="1"
-         Header="Y"
-         Text="0"/>
-
-                                    <TextBox x:Name="InputDelayTextBox"
-         Grid.Column="2"
-         Header="Delay ms"
-         Text="0"/>
-
-                                    <StackPanel Grid.Column="3"
-            Orientation="Horizontal"
-            Spacing="8"
-            VerticalAlignment="Bottom">
-
-                                        <Button Content="Thêm Click"
-            Width="100"
-            Click="AddPointButton_Click"/>
-
-                                        <Button Content="Thêm Delay"
-            Width="110"
-            Click="AddDelayButton_Click"/>
-
-                                    </StackPanel>
-
-                                </Grid>
-
-                                <StackPanel Grid.Row="2"
+                                <!-- Toolbar -->
+                                <StackPanel Grid.Row="0"
                                             Orientation="Horizontal"
                                             Spacing="8">
-
-                                    <Button Content="Kịch bản mới"
-                                            Width="130"
-                                            Click="NewScriptButton_Click"/>
-
-                                    <Button Content="Xóa danh sách"
-                                            Width="130"
+                                    <Button Content="Thêm Click"
+                                            Click="AddPointButton_Click"/>
+                                    <Button Content="Thêm Delay"
+                                            Click="AddDelayButton_Click"/>
+                                    <Button Content="Xóa tất cả"
                                             Click="ClearListButton_Click"/>
-
                                 </StackPanel>
 
-                                <ListView x:Name="ClickStepsListView"
-          Grid.Row="3"
-          ItemsSource="{x:Bind ClickSteps, Mode=OneWay}"
-          CanDragItems="True"
-          CanReorderItems="True"
-          AllowDrop="True"
-          DragItemsCompleted="ClickStepsListView_DragItemsCompleted">
+                                <!-- Column headers -->
+                                <Border Grid.Row="1"
+                                        Background="#1E1E1E"
+                                        CornerRadius="4"
+                                        Padding="10,5">
+                                    <Grid ColumnDefinitions="48,72,90,90,110,*,64"
+                                          ColumnSpacing="6">
+                                        <TextBlock Grid.Column="0" Text="#" Foreground="#666666" FontSize="12"/>
+                                        <TextBlock Grid.Column="1" Text="Loại" Foreground="#666666" FontSize="12"/>
+                                        <TextBlock Grid.Column="2" Text="X" Foreground="#666666" FontSize="12"/>
+                                        <TextBlock Grid.Column="3" Text="Y" Foreground="#666666" FontSize="12"/>
+                                        <TextBlock Grid.Column="4" Text="Delay ms" Foreground="#666666" FontSize="12"/>
+                                        <TextBlock Grid.Column="5" Text="Mô tả" Foreground="#666666" FontSize="12"/>
+                                    </Grid>
+                                </Border>
 
+                                <!-- Steps list -->
+                                <ListView x:Name="ClickStepsListView"
+                                          Grid.Row="2"
+                                          ItemsSource="{x:Bind ScriptVM.ClickSteps, Mode=OneWay}"
+                                          CanDragItems="True"
+                                          CanReorderItems="True"
+                                          AllowDrop="True"
+                                          DragItemsCompleted="ClickStepsListView_DragItemsCompleted">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="Padding" Value="10,3"/>
+                                            <Setter Property="MinHeight" Value="0"/>
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
                                     <ListView.ItemTemplate>
                                         <DataTemplate x:DataType="models:ClickStep">
-                                            <Grid ColumnDefinitions="60,90,110,110,130,*,80"
-                  Padding="8"
-                  ColumnSpacing="8">
-
+                                            <Grid ColumnDefinitions="48,72,90,90,110,*,64"
+                                                  ColumnSpacing="6">
                                                 <TextBlock Grid.Column="0"
-                           Text="{x:Bind IndexText, Mode=OneWay}"
-                           Foreground="White"
-                           VerticalAlignment="Center"/>
-
+                                                           Text="{x:Bind IndexText, Mode=OneWay}"
+                                                           Foreground="#777777"
+                                                           FontSize="13"
+                                                           VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1"
-                           Text="{x:Bind TypeText, Mode=OneWay}"
-                           Foreground="White"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"/>
-
+                                                           Text="{x:Bind TypeText, Mode=OneWay}"
+                                                           Foreground="White"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"/>
                                                 <TextBox Grid.Column="2"
-                         Text="{x:Bind XInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Header="X"/>
-
+                                                         Text="{x:Bind XInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         Visibility="{x:Bind CoordVisibility, Mode=OneWay}"
+                                                         FontSize="13"/>
                                                 <TextBox Grid.Column="3"
-                         Text="{x:Bind YInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Header="Y"/>
-
+                                                         Text="{x:Bind YInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         Visibility="{x:Bind CoordVisibility, Mode=OneWay}"
+                                                         FontSize="13"/>
                                                 <TextBox Grid.Column="4"
-                         Text="{x:Bind DelayInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Header="Delay ms"/>
-
+                                                         Text="{x:Bind DelayInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         FontSize="13"/>
                                                 <TextBox Grid.Column="5"
-                         Text="{x:Bind Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Header="Mô tả"/>
-
+                                                         Text="{x:Bind Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         FontSize="13"/>
                                                 <Button Grid.Column="6"
-                        Content="Xóa"
-                        Tag="{x:Bind Id}"
-                        VerticalAlignment="Bottom"
-                        Click="DeleteStepButton_Click"/>
+                                                        Content="Xóa"
+                                                        Tag="{x:Bind Id}"
+                                                        Padding="6,3"
+                                                        FontSize="12"
+                                                        VerticalAlignment="Center"
+                                                        Click="DeleteStepButton_Click"/>
                                             </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
                                 </ListView>
-
                             </Grid>
-                        </Border>
 
-                        <!-- CHẠY KỊCH BẢN + LOG -->
-                        <Border Grid.Column="1"
-                                Background="#2D2D30"
-                                CornerRadius="8"
-                                Padding="16">
+                            <!-- Run panel -->
+                            <Border Grid.Column="1"
+                                    Background="#1E1E1E"
+                                    BorderBrush="#333333"
+                                    BorderThickness="1,0,0,0"
+                                    Padding="16">
+                                <Grid RowDefinitions="Auto,Auto,Auto,*"
+                                      RowSpacing="12">
 
-                            <Grid RowDefinitions="Auto,Auto,Auto,*"
-                                  RowSpacing="12">
+                                    <TextBlock Text="Chạy kịch bản"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Foreground="White"/>
 
-                                <TextBlock Text="Chạy kịch bản"
-                                           FontSize="20"
-                                           FontWeight="SemiBold"
-                                           Foreground="White"/>
-
-                                <StackPanel Grid.Row="1"
-                                            Spacing="10">
-
-                                    <TextBox x:Name="LoopCountTextBox"
-                                             Header="Số vòng lặp"
-                                             Text="1"/>
-
-                                    <TextBlock Text="Nhập 0 = lặp vô hạn"
-                                               Foreground="#CCCCCC"
-                                               FontSize="13"/>
-
-                                    <StackPanel Orientation="Horizontal"
-                                                Spacing="8">
-
-                                        <Button x:Name="RunScriptButton"
-                                                Content="Start"
-                                                Width="100"
-                                                Click="RunScriptButton_Click"/>
-
-                                        <Button Content="Clear Log"
-                                                Width="100"
-                                                Click="ClearLogButton_Click"/>
-
+                                    <StackPanel Grid.Row="1" Spacing="10">
+                                        <TextBox x:Name="LoopCountTextBox"
+                                                 Header="Số vòng lặp"
+                                                 Text="1"
+                                                 TextChanged="LoopCountTextBox_TextChanged"/>
+                                        <TextBlock Text="Nhập 0 để lặp vô hạn"
+                                                   Foreground="#777777"
+                                                   FontSize="12"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button x:Name="RunScriptButton"
+                                                    Content="{x:Bind ScriptVM.RunButtonLabel, Mode=OneWay}"
+                                                    Width="100"
+                                                    Click="RunScriptButton_Click"/>
+                                            <Button Content="Xóa log"
+                                                    Width="85"
+                                                    Click="ClearLogButton_Click"/>
+                                        </StackPanel>
                                     </StackPanel>
 
-                                </StackPanel>
+                                    <TextBlock Grid.Row="2"
+                                               x:Name="RunStatusTextBlock"
+                                               Text="{x:Bind ScriptVM.RunStatus, Mode=OneWay}"
+                                               Foreground="#7CFC00"
+                                               FontSize="13"/>
 
-                                <TextBlock Grid.Row="2"
-                                           x:Name="RunStatusTextBlock"
-                                           Text="Chưa chạy"
-                                           Foreground="#7CFC00"
-                                           FontSize="14"/>
-
-                                <ScrollViewer Grid.Row="3"
-                                              VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Disabled">
-
-                                    <TextBox x:Name="LogTextBox"
-                                             IsReadOnly="True"
-                                             AcceptsReturn="True"
-                                             TextWrapping="Wrap"
-                                             FontFamily="Consolas"
-                                             FontSize="13"
-                                             Text=""/>
-
-                                </ScrollViewer>
-
-                            </Grid>
-                        </Border>
-
+                                    <ScrollViewer Grid.Row="3"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <TextBox x:Name="LogTextBox"
+                                                 IsReadOnly="True"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 FontFamily="Consolas"
+                                                 FontSize="12"
+                                                 Text=""/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </Grid>
             </Grid>
@@ -403,6 +370,7 @@
             <!-- PAGE: CÀI ĐẶT -->
             <StackPanel x:Name="SettingsPage"
             Spacing="16"
+            Padding="24"
             Visibility="Collapsed">
 
                 <TextBlock Text="Cài đặt"
@@ -432,29 +400,15 @@
                        FontSize="14"/>
 
                         <Grid ColumnDefinitions="*,*"
-                  RowDefinitions="Auto,Auto"
-                  ColumnSpacing="16"
-                  RowSpacing="14">
+                  ColumnSpacing="16">
 
                             <ComboBox x:Name="AddPointHotkeyComboBox"
-                          Grid.Row="0"
                           Grid.Column="0"
-                          Header="Thêm vị trí vào kịch bản"/>
-
-                            <ComboBox x:Name="ToggleTrackingHotkeyComboBox"
-                          Grid.Row="0"
-                          Grid.Column="1"
-                          Header="Start / Stop theo dõi tọa độ"/>
+                          Header="Thêm vị trí chuột vào kịch bản (F6)"/>
 
                             <ComboBox x:Name="RunScriptHotkeyComboBox"
-                          Grid.Row="1"
-                          Grid.Column="0"
-                          Header="Start / Stop chạy kịch bản"/>
-
-                            <ComboBox x:Name="CopyCoordinateHotkeyComboBox"
-                          Grid.Row="1"
                           Grid.Column="1"
-                          Header="Copy tọa độ hiện tại"/>
+                          Header="Start / Stop chạy kịch bản (F8)"/>
 
                         </Grid>
 

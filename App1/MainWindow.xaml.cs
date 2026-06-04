@@ -1,90 +1,343 @@
 using App1.Helpers;
 using App1.Models;
 using App1.Services;
+using App1.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
-using System.Collections.ObjectModel;
-using System.Threading;
-using System.Threading.Tasks;
-using Windows.ApplicationModel.DataTransfer;
-using Microsoft.UI.Xaml.Controls;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
 namespace App1
 {
     public sealed partial class MainWindow : Window
     {
-        public ObservableCollection<ClickStep> ClickSteps { get; } = new ObservableCollection<ClickStep>();
+        public ScriptEditorViewModel ScriptVM { get; } = new ScriptEditorViewModel();
+        public ObservableCollection<ScriptListItem> ScriptList { get; } = new();
 
-        private readonly AutoClickService _autoClickService = new AutoClickService();
+        private readonly DispatcherTimer _pollingTimer;
+        private HotkeySettings _hotkeys = AppSettingsService.Load();
 
-        private DispatcherTimer _timer;
+        private bool _addPointWasPressed, _runScriptWasPressed;
+        private bool _sidebarCollapsed = false;
+        private const double SidebarExpandedWidth = 260;
+        private const double SidebarCollapsedWidth = 44;
 
-        private bool _isTracking = true;
-        private bool _isRunningScript = false;
+        public MainWindow()
+        {
+            this.InitializeComponent();
 
-        private bool _f6WasPressed = false;
-        private bool _f7WasPressed = false;
-        private bool _f8WasPressed = false;
-        private bool _f9WasPressed = false;
+            ScriptVM.Log = AddLog;
+            ScriptVM.PropertyChanged += OnScriptVmPropertyChanged;
 
-        private int _currentX = 0;
-        private int _currentY = 0;
+            LoadHotkeyComboBoxes();
+            UpdateHotkeyInfoText();
 
-        private int _stepIdCounter = 1;
-        private string _currentScriptName = "";
+            _pollingTimer = new DispatcherTimer();
+            _pollingTimer.Interval = TimeSpan.FromMilliseconds(30);
+            _pollingTimer.Tick += OnPollingTick;
+            _pollingTimer.Start();
 
-        private CancellationTokenSource? _scriptCancellation;
-        private int _addPointHotkey = HotkeyService.VK_F6;
-        private int _toggleTrackingHotkey = HotkeyService.VK_F7;
-        private int _runScriptHotkey = HotkeyService.VK_F8;
-        private int _copyCoordinateHotkey = HotkeyService.VK_F9;
+            ShowPage(ClickScriptPage);
+            RefreshSavedScriptsList();
+        }
 
-        private bool _addPointHotkeyWasPressed = false;
-        private bool _toggleTrackingHotkeyWasPressed = false;
-        private bool _runScriptHotkeyWasPressed = false;
-        private bool _copyCoordinateHotkeyWasPressed = false;
+        private void OnScriptVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ScriptEditorViewModel.LoopCount))
+                LoopCountTextBox.Text = ScriptVM.LoopCount.ToString();
+
+            if (e.PropertyName == nameof(ScriptEditorViewModel.IsRunning))
+            {
+                if (ScriptVM.IsRunning)
+                    MinimizeWindow();
+                else
+                    RestoreWindow();
+            }
+        }
+
+        // ── POLLING & HOTKEYS ─────────────────────────────────────────────────
+
+        private void OnPollingTick(object? sender, object e) => CheckHotkeys();
+
+        private void CheckHotkeys()
+        {
+            bool addPoint = HotkeyService.IsKeyPressed(_hotkeys.AddPoint);
+            bool runScript = HotkeyService.IsKeyPressed(_hotkeys.RunScript);
+
+            if (addPoint && !_addPointWasPressed) AddMousePositionToScript();
+            if (runScript && !_runScriptWasPressed) ScriptVM.ToggleRun();
+
+            _addPointWasPressed = addPoint;
+            _runScriptWasPressed = runScript;
+        }
+
+        private void AddMousePositionToScript()
+        {
+            if (string.IsNullOrWhiteSpace(ScriptVM.ScriptName)) return;
+
+            MousePoint pos = MouseService.GetCursorPosition();
+            ScriptVM.AddClick(pos.X, pos.Y, delayMs: 0);
+
+            ShowCursorToast($"[{ScriptVM.ScriptName}]\nThêm Click X={pos.X}, Y={pos.Y}", pos.X, pos.Y);
+            AddLog($"Thêm Click vào '{ScriptVM.ScriptName}': X={pos.X}, Y={pos.Y}");
+        }
+
+        // ── SCRIPT LIBRARY ────────────────────────────────────────────────────
+
+        private bool _suppressAutoOpen = false;
+
+        private void RefreshSavedScriptsList()
+        {
+            string? activeSafe = string.IsNullOrWhiteSpace(ScriptVM.ScriptName)
+                ? null
+                : ScriptStorageService.GetSafeName(ScriptVM.ScriptName);
+
+            _suppressAutoOpen = true;
+
+            ScriptList.Clear();
+
+            ScriptListItem? activeItem = null;
+            foreach (string name in ScriptStorageService.GetSavedScriptNames())
+            {
+                var item = new ScriptListItem(name);
+                ScriptList.Add(item);
+                if (name == activeSafe) activeItem = item;
+            }
+
+            if (activeItem != null)
+                SavedScriptsListView.SelectedItem = activeItem;
+
+            _suppressAutoOpen = false;
+        }
+
+        private async void SavedScriptsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            ScriptListItem? selected = SavedScriptsListView.SelectedItem as ScriptListItem;
+            foreach (ScriptListItem item in ScriptList)
+                item.IsSelected = item == selected;
+
+            if (!_suppressAutoOpen && selected != null)
+                await OpenScriptAsync(selected.Name);
+        }
+
+        private async void NewScriptDialogButton_Click(object sender, RoutedEventArgs e)
+        {
+            string? name = await ShowInputDialogAsync("Tạo kịch bản mới", "Ví dụ: Login tool, Farm task...");
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            ScriptVM.CreateScript(name);
+            LogTextBox.Text = "";
+            ShowEditor();
+            RefreshSavedScriptsList();
+        }
+
+        private async void InlineRenameButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is ScriptListItem item)
+                await RenameScriptAsync(item.Name);
+        }
+
+        private async void InlineDeleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is ScriptListItem item)
+                await DeleteScriptAsync(item.Name);
+        }
+
+        private async Task OpenScriptAsync(string name)
+        {
+            bool loaded = await ScriptVM.LoadAsync(name);
+            if (!loaded) return;
+
+            LogTextBox.Text = "";
+            ShowEditor();
+            RefreshSavedScriptsList();
+        }
+
+        private async Task RenameScriptAsync(string oldName)
+        {
+            string? newName = await ShowInputDialogAsync("Đổi tên kịch bản", "Nhập tên mới", oldName);
+            if (string.IsNullOrWhiteSpace(newName) || newName == oldName) return;
+
+            bool ok = await ScriptStorageService.RenameAsync(oldName, newName);
+            if (!ok)
+            {
+                await ShowAlertAsync($"Không thể đổi tên. Tên \"{newName}\" đã tồn tại hoặc không hợp lệ.");
+                return;
+            }
+
+            if (IsActiveScript(oldName))
+                ScriptVM.RenameScript(newName);
+
+            RefreshSavedScriptsList();
+            AddLog($"Đã đổi tên '{oldName}' → '{newName}'.");
+        }
+
+        private async Task DeleteScriptAsync(string name)
+        {
+            bool confirmed = await ShowConfirmAsync($"Xóa kịch bản \"{name}\"?", "Thao tác này không thể hoàn tác.");
+            if (!confirmed) return;
+
+            ScriptStorageService.Delete(name);
+
+            if (IsActiveScript(name))
+            {
+                ScriptVM.Reset();
+                ShowPlaceholder();
+            }
+
+            RefreshSavedScriptsList();
+            AddLog($"Đã xóa kịch bản: {name}");
+        }
+
+        private bool IsActiveScript(string safeName)
+            => !string.IsNullOrWhiteSpace(ScriptVM.ScriptName)
+            && ScriptStorageService.GetSafeName(ScriptVM.ScriptName) == safeName;
+
+        private void ShowEditor()
+        {
+            ScriptEditorPlaceholder.Visibility = Visibility.Collapsed;
+            ScriptEditorPanel.Visibility = Visibility.Visible;
+        }
+
+        private void ShowPlaceholder()
+        {
+            ScriptEditorPanel.Visibility = Visibility.Collapsed;
+            ScriptEditorPlaceholder.Visibility = Visibility.Visible;
+        }
+
+        // ── DIALOG HELPERS ────────────────────────────────────────────────────
+
+        private async Task<string?> ShowInputDialogAsync(string title, string placeholder, string defaultValue = "")
+        {
+            TextBox input = new TextBox
+            {
+                PlaceholderText = placeholder,
+                Text = defaultValue,
+                SelectionStart = defaultValue.Length
+            };
+
+            ContentDialog dialog = new ContentDialog
+            {
+                Title = title,
+                Content = input,
+                PrimaryButtonText = "Xác nhận",
+                CloseButtonText = "Hủy",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = this.Content.XamlRoot
+            };
+
+            ContentDialogResult result = await dialog.ShowAsync();
+            return result == ContentDialogResult.Primary ? input.Text.Trim() : null;
+        }
+
+        private async Task<bool> ShowConfirmAsync(string title, string message)
+        {
+            ContentDialog dialog = new ContentDialog
+            {
+                Title = title,
+                Content = message,
+                PrimaryButtonText = "Xóa",
+                CloseButtonText = "Hủy",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.Content.XamlRoot
+            };
+
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+
+        private async Task ShowAlertAsync(string message)
+        {
+            ContentDialog dialog = new ContentDialog
+            {
+                Title = "Thông báo",
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = this.Content.XamlRoot
+            };
+
+            await dialog.ShowAsync();
+        }
+
+        // ── SCRIPT EDITOR ─────────────────────────────────────────────────────
+
+        private void AddPointButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(ScriptVM.ScriptName))
+            {
+                AddLog("Chưa có kịch bản. Hãy tạo kịch bản trước.");
+                return;
+            }
+
+            ScriptVM.AddClick(x: 0, y: 0, delayMs: 100);
+            AddLog("Thêm Click: X=0, Y=0, Delay=100ms");
+        }
+
+        private void AddDelayButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(ScriptVM.ScriptName))
+            {
+                AddLog("Chưa có kịch bản. Hãy tạo kịch bản trước.");
+                return;
+            }
+
+            ScriptVM.AddDelay(delayMs: 1000);
+            AddLog("Thêm Delay: 1000ms");
+        }
+
+        private void DeleteStepButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn) return;
+            int id = ParseInt(btn.Tag?.ToString() ?? "", -1);
+            ScriptVM.DeleteStep(id);
+        }
+
+        private void ClickStepsListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+        {
+            ScriptVM.RefreshIndexes();
+            AddLog("Đã thay đổi thứ tự điểm click.");
+        }
+
+        private void ClearListButton_Click(object sender, RoutedEventArgs e) => ScriptVM.ClearSteps();
+
+        private void RunScriptButton_Click(object sender, RoutedEventArgs e) => ScriptVM.ToggleRun();
+
+        private void ClearLogButton_Click(object sender, RoutedEventArgs e) => LogTextBox.Text = "";
+
+        private void LoopCountTextBox_TextChanged(object sender, TextChangedEventArgs e)
+            => ScriptVM.LoopCount = ParseInt(LoopCountTextBox.Text, 1);
+
+        // ── HOTKEY SETTINGS ───────────────────────────────────────────────────
 
         private void LoadHotkeyComboBoxes()
         {
             List<HotkeyOption> options = HotkeyService.GetFunctionKeyOptions();
 
             FillHotkeyComboBox(AddPointHotkeyComboBox, options);
-            FillHotkeyComboBox(ToggleTrackingHotkeyComboBox, options);
             FillHotkeyComboBox(RunScriptHotkeyComboBox, options);
-            FillHotkeyComboBox(CopyCoordinateHotkeyComboBox, options);
 
-            SelectHotkeyComboBoxValue(AddPointHotkeyComboBox, _addPointHotkey);
-            SelectHotkeyComboBoxValue(ToggleTrackingHotkeyComboBox, _toggleTrackingHotkey);
-            SelectHotkeyComboBoxValue(RunScriptHotkeyComboBox, _runScriptHotkey);
-            SelectHotkeyComboBoxValue(CopyCoordinateHotkeyComboBox, _copyCoordinateHotkey);
+            SelectHotkeyComboBoxValue(AddPointHotkeyComboBox, _hotkeys.AddPoint);
+            SelectHotkeyComboBoxValue(RunScriptHotkeyComboBox, _hotkeys.RunScript);
         }
 
         private void FillHotkeyComboBox(ComboBox comboBox, List<HotkeyOption> options)
         {
             comboBox.Items.Clear();
-
             foreach (HotkeyOption option in options)
-            {
-                comboBox.Items.Add(new ComboBoxItem
-                {
-                    Content = option.Name,
-                    Tag = option.KeyCode
-                });
-            }
+                comboBox.Items.Add(new ComboBoxItem { Content = option.Name, Tag = option.KeyCode });
         }
 
         private void SelectHotkeyComboBoxValue(ComboBox comboBox, int keyCode)
         {
             foreach (object item in comboBox.Items)
             {
-                if (item is ComboBoxItem comboBoxItem &&
-                    comboBoxItem.Tag is int itemKeyCode &&
-                    itemKeyCode == keyCode)
+                if (item is ComboBoxItem cbi && cbi.Tag is int code && code == keyCode)
                 {
-                    comboBox.SelectedItem = comboBoxItem;
+                    comboBox.SelectedItem = cbi;
                     return;
                 }
             }
@@ -92,357 +345,107 @@ namespace App1
 
         private int GetSelectedHotkeyValue(ComboBox comboBox, int defaultValue)
         {
-            if (comboBox.SelectedItem is ComboBoxItem comboBoxItem &&
-                comboBoxItem.Tag is int keyCode)
-            {
-                return keyCode;
-            }
-
+            if (comboBox.SelectedItem is ComboBoxItem cbi && cbi.Tag is int code)
+                return code;
             return defaultValue;
         }
 
-        private void SaveHotkeySettingsButton_Click(object sender, RoutedEventArgs e)
+        private async void SaveHotkeySettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            int addPointKey = GetSelectedHotkeyValue(AddPointHotkeyComboBox, HotkeyService.VK_F6);
-            int toggleTrackingKey = GetSelectedHotkeyValue(ToggleTrackingHotkeyComboBox, HotkeyService.VK_F7);
-            int runScriptKey = GetSelectedHotkeyValue(RunScriptHotkeyComboBox, HotkeyService.VK_F8);
-            int copyCoordinateKey = GetSelectedHotkeyValue(CopyCoordinateHotkeyComboBox, HotkeyService.VK_F9);
+            int addPoint = GetSelectedHotkeyValue(AddPointHotkeyComboBox, HotkeyService.VK_F1);
+            int run = GetSelectedHotkeyValue(RunScriptHotkeyComboBox, HotkeyService.VK_F2);
 
-            int[] selectedKeys =
-            {
-        addPointKey,
-        toggleTrackingKey,
-        runScriptKey,
-        copyCoordinateKey
-    };
-
-            if (selectedKeys.Distinct().Count() != selectedKeys.Length)
+            if (addPoint == run)
             {
                 HotkeySettingsStatusTextBlock.Text = "Không được đặt trùng phím tắt.";
                 HotkeySettingsStatusTextBlock.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                    Windows.UI.Color.FromArgb(255, 255, 90, 90)
-                );
+                    Windows.UI.Color.FromArgb(255, 255, 90, 90));
                 return;
             }
 
-            _addPointHotkey = addPointKey;
-            _toggleTrackingHotkey = toggleTrackingKey;
-            _runScriptHotkey = runScriptKey;
-            _copyCoordinateHotkey = copyCoordinateKey;
+            _hotkeys = new HotkeySettings { AddPoint = addPoint, RunScript = run };
+            await AppSettingsService.SaveAsync(_hotkeys);
 
-            HotkeySettingsStatusTextBlock.Text = "Đã lưu cài đặt phím tắt.";
+            HotkeySettingsStatusTextBlock.Text = "Đã lưu cài đặt — sẽ áp dụng cho lần khởi động tiếp theo.";
             HotkeySettingsStatusTextBlock.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                Windows.UI.Color.FromArgb(255, 124, 252, 0)
-            );
+                Windows.UI.Color.FromArgb(255, 124, 252, 0));
 
             UpdateHotkeyInfoText();
         }
 
-        private void ResetHotkeySettingsButton_Click(object sender, RoutedEventArgs e)
+        private async void ResetHotkeySettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            _addPointHotkey = HotkeyService.VK_F6;
-            _toggleTrackingHotkey = HotkeyService.VK_F7;
-            _runScriptHotkey = HotkeyService.VK_F8;
-            _copyCoordinateHotkey = HotkeyService.VK_F9;
+            _hotkeys = new HotkeySettings();
+            await AppSettingsService.SaveAsync(_hotkeys);
 
-            SelectHotkeyComboBoxValue(AddPointHotkeyComboBox, _addPointHotkey);
-            SelectHotkeyComboBoxValue(ToggleTrackingHotkeyComboBox, _toggleTrackingHotkey);
-            SelectHotkeyComboBoxValue(RunScriptHotkeyComboBox, _runScriptHotkey);
-            SelectHotkeyComboBoxValue(CopyCoordinateHotkeyComboBox, _copyCoordinateHotkey);
+            SelectHotkeyComboBoxValue(AddPointHotkeyComboBox, _hotkeys.AddPoint);
+            SelectHotkeyComboBoxValue(RunScriptHotkeyComboBox, _hotkeys.RunScript);
 
             HotkeySettingsStatusTextBlock.Text = "Đã khôi phục phím tắt mặc định.";
             HotkeySettingsStatusTextBlock.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                Windows.UI.Color.FromArgb(255, 124, 252, 0)
-            );
+                Windows.UI.Color.FromArgb(255, 124, 252, 0));
 
             UpdateHotkeyInfoText();
         }
 
         private void UpdateHotkeyInfoText()
         {
-            string addPointKey = HotkeyService.GetKeyName(_addPointHotkey);
-            string toggleTrackingKey = HotkeyService.GetKeyName(_toggleTrackingHotkey);
-            string runScriptKey = HotkeyService.GetKeyName(_runScriptHotkey);
-            string copyCoordinateKey = HotkeyService.GetKeyName(_copyCoordinateHotkey);
+            string addKey = HotkeyService.GetKeyName(_hotkeys.AddPoint);
+            string runKey = HotkeyService.GetKeyName(_hotkeys.RunScript);
 
             CurrentHotkeyInfoTextBlock.Text =
                 $"Phím tắt hiện tại:\n" +
-                $"{addPointKey} = Thêm vị trí chuột vào kịch bản hiện tại\n" +
-                $"{toggleTrackingKey} = Start / Stop theo dõi tọa độ\n" +
-                $"{runScriptKey} = Start / Stop chạy kịch bản\n" +
-                $"{copyCoordinateKey} = Copy tọa độ hiện tại";
+                $"{addKey} = Thêm vị trí chuột vào kịch bản\n" +
+                $"{runKey} = Start / Stop chạy kịch bản";
+
+            HotkeyHintTextBlock.Text = $"{addKey} = Thêm click   {runKey} = Chạy / Dừng";
         }
 
-        public MainWindow()
+        // ── UI NAVIGATION ─────────────────────────────────────────────────────
+
+        private void SidebarToggleButton_Click(object sender, RoutedEventArgs e)
         {
-            this.InitializeComponent();
+            _sidebarCollapsed = !_sidebarCollapsed;
 
-            LoadHotkeyComboBoxes();
-            UpdateHotkeyInfoText();
-
-            _timer = new DispatcherTimer();
-            _timer.Interval = TimeSpan.FromMilliseconds(30);
-            _timer.Tick += Timer_Tick;
-            _timer.Start();
-
-            ShowPage(CoordinatePage);
-        }
-
-        private void ClickStepsListView_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
-        {
-            RefreshStepIndexes();
-            AddLog("Đã thay đổi thứ tự điểm click.");
-        }
-
-        private void Timer_Tick(object sender, object e)
-        {
-            CheckHotkeys();
-
-            if (_isTracking)
+            if (_sidebarCollapsed)
             {
-                MousePoint point = MouseService.GetCursorPosition();
-
-                _currentX = point.X;
-                _currentY = point.Y;
-
-                XTextBlock.Text = _currentX.ToString();
-                YTextBlock.Text = _currentY.ToString();
-                CoordinateTextBox.Text = $"X: {_currentX}, Y: {_currentY}";
-            }
-        }
-
-        private void CheckHotkeys()
-        {
-            bool addPointPressed = HotkeyService.IsKeyPressed(_addPointHotkey);
-            bool toggleTrackingPressed = HotkeyService.IsKeyPressed(_toggleTrackingHotkey);
-            bool runScriptPressed = HotkeyService.IsKeyPressed(_runScriptHotkey);
-            bool copyCoordinatePressed = HotkeyService.IsKeyPressed(_copyCoordinateHotkey);
-
-            if (addPointPressed && !_addPointHotkeyWasPressed)
-            {
-                AddCurrentMousePositionToCurrentScript();
-            }
-
-            if (toggleTrackingPressed && !_toggleTrackingHotkeyWasPressed)
-            {
-                ToggleTracking();
-            }
-
-            if (runScriptPressed && !_runScriptHotkeyWasPressed)
-            {
-                ToggleRunScript();
-            }
-
-            if (copyCoordinatePressed && !_copyCoordinateHotkeyWasPressed)
-            {
-                CopyCurrentCoordinate();
-            }
-
-            _addPointHotkeyWasPressed = addPointPressed;
-            _toggleTrackingHotkeyWasPressed = toggleTrackingPressed;
-            _runScriptHotkeyWasPressed = runScriptPressed;
-            _copyCoordinateHotkeyWasPressed = copyCoordinatePressed;
-        }
-
-        private void CopyCurrentCoordinate()
-        {
-            MousePoint point = MouseService.GetCursorPosition();
-
-            _currentX = point.X;
-            _currentY = point.Y;
-
-            string coordinate = $"X: {_currentX}, Y: {_currentY}";
-
-            XTextBlock.Text = _currentX.ToString();
-            YTextBlock.Text = _currentY.ToString();
-            CoordinateTextBox.Text = coordinate;
-
-            var package = new DataPackage();
-            package.SetText(coordinate);
-            Clipboard.SetContent(package);
-
-            StatusTextBlock.Text = $"Đã copy: {coordinate}";
-            ShowCursorToast($"Đã copy\n{coordinate}", _currentX, _currentY);
-        }
-
-        private void AddCurrentMousePositionToCurrentScript()
-        {
-            MousePoint point = MouseService.GetCursorPosition();
-
-            if (string.IsNullOrWhiteSpace(_currentScriptName))
-            {
-                ShowCursorToast("Chưa có kịch bản\nHãy tạo kịch bản trước", point.X, point.Y);
-                return;
-            }
-
-            _currentX = point.X;
-            _currentY = point.Y;
-
-            int delayMs = ParseInt(InputDelayTextBox.Text, 0);
-
-            AddClickStep(_currentX, _currentY, delayMs);
-
-            ShowCursorToast($"Đã thêm Click\nX: {_currentX}, Y: {_currentY}\nDelay: {delayMs}ms", _currentX, _currentY);
-            AddLog($"F6 thêm Click: X={_currentX}, Y={_currentY}, Delay sau click={delayMs}ms");
-        }
-
-        private void AddDelayStep(int delayMs)
-        {
-            ClickSteps.Add(new ClickStep
-            {
-                Id = _stepIdCounter++,
-                Index = ClickSteps.Count + 1,
-                Type = "Delay",
-                X = 0,
-                Y = 0,
-                DelayMs = delayMs,
-                Description = "Wait before next action"
-            });
-
-            RefreshStepIndexes();
-        }
-
-        private void AddClickStep(int x, int y, int delayMs = 0)
-        {
-            ClickSteps.Add(new ClickStep
-            {
-                Id = _stepIdCounter++,
-                Index = ClickSteps.Count + 1,
-                Type = "Click",
-                X = x,
-                Y = y,
-                DelayMs = delayMs,
-                Description = "Left click"
-            });
-
-            RefreshStepIndexes();
-        }
-
-        private void RefreshStepIndexes()
-        {
-            for (int i = 0; i < ClickSteps.Count; i++)
-            {
-                ClickSteps[i].Index = i + 1;
-            }
-        }
-
-        private void ToggleTracking()
-        {
-            _isTracking = !_isTracking;
-
-            MousePoint point = MouseService.GetCursorPosition();
-
-            if (_isTracking)
-            {
-                StartStopButton.Content = "Stop";
-                StatusTextBlock.Text = "Đang theo dõi tọa độ...";
-                ShowCursorToast("Đã bật theo dõi", point.X, point.Y);
+                ClickScriptPage.ColumnDefinitions[0].Width = new GridLength(SidebarCollapsedWidth);
+                SidebarTitleText.Visibility = Visibility.Collapsed;
+                SidebarNewScriptButton.Visibility = Visibility.Collapsed;
+                SavedScriptsListView.Visibility = Visibility.Collapsed;
+                SidebarToggleButton.Content = "»";
             }
             else
             {
-                StartStopButton.Content = "Start";
-                StatusTextBlock.Text = "Đã dừng theo dõi tọa độ.";
-                ShowCursorToast("Đã dừng theo dõi", point.X, point.Y);
+                ClickScriptPage.ColumnDefinitions[0].Width = new GridLength(SidebarExpandedWidth);
+                SidebarTitleText.Visibility = Visibility.Visible;
+                SidebarNewScriptButton.Visibility = Visibility.Visible;
+                SavedScriptsListView.Visibility = Visibility.Visible;
+                SidebarToggleButton.Content = "«";
             }
         }
 
-        private void ToggleRunScript()
+        private void ClickScriptMenuButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_isRunningScript)
-            {
-                StopScript();
-            }
-            else
-            {
-                _ = RunScriptAsync();
-            }
+            ShowPage(ClickScriptPage);
+            RefreshSavedScriptsList();
         }
 
-        private async Task RunScriptAsync()
+        private void SettingsMenuButton_Click(object sender, RoutedEventArgs e) => ShowPage(SettingsPage);
+
+        private void ShowPage(UIElement page)
         {
-            if (string.IsNullOrWhiteSpace(_currentScriptName))
-            {
-                AddLog("Chưa có kịch bản để chạy.");
-                RunStatusTextBlock.Text = "Chưa có kịch bản.";
-                return;
-            }
-
-            if (ClickSteps.Count == 0)
-            {
-                AddLog("Không có điểm click nào trong kịch bản.");
-                RunStatusTextBlock.Text = "Không có điểm click.";
-                return;
-            }
-
-            int loopCount = ParseInt(LoopCountTextBox.Text, 1);
-
-            _scriptCancellation = new CancellationTokenSource();
-            CancellationToken token = _scriptCancellation.Token;
-
-            _isRunningScript = true;
-            RunScriptButton.Content = "Stop";
-            RunStatusTextBlock.Text = "Đang chạy...";
-
-            AddLog($"Bắt đầu chạy kịch bản: {_currentScriptName}");
-            ShowCursorToast("Bắt đầu auto click", _currentX, _currentY);
-
-            try
-            {
-                await _autoClickService.RunAsync(
-                    ClickSteps,
-                    loopCount,
-                    token,
-                    AddLog
-                );
-
-                if (!token.IsCancellationRequested)
-                {
-                    AddLog("Hoàn thành kịch bản.");
-                    RunStatusTextBlock.Text = "Hoàn thành.";
-                    ShowCursorToast("Hoàn thành auto click", _currentX, _currentY);
-                }
-            }
-            catch (TaskCanceledException)
-            {
-                AddLog("Đã dừng kịch bản.");
-                RunStatusTextBlock.Text = "Đã dừng.";
-            }
-            finally
-            {
-                _isRunningScript = false;
-                RunScriptButton.Content = "Start";
-                _scriptCancellation?.Dispose();
-                _scriptCancellation = null;
-            }
+            ClickScriptPage.Visibility = Visibility.Collapsed;
+            SettingsPage.Visibility = Visibility.Collapsed;
+            page.Visibility = Visibility.Visible;
         }
 
-        private void StopScript()
-        {
-            if (_scriptCancellation != null)
-            {
-                _scriptCancellation.Cancel();
-            }
-
-            _isRunningScript = false;
-            RunScriptButton.Content = "Start";
-            RunStatusTextBlock.Text = "Đang dừng...";
-            AddLog("Yêu cầu dừng kịch bản.");
-        }
+        // ── HELPERS ───────────────────────────────────────────────────────────
 
         private void AddLog(string message)
         {
             string time = DateTime.Now.ToString("HH:mm:ss");
             LogTextBox.Text += $"[{time}] {message}\r\n";
-        }
-
-        private int ParseInt(string text, int defaultValue)
-        {
-            if (int.TryParse(text, out int value))
-            {
-                return value;
-            }
-
-            return defaultValue;
         }
 
         private void ShowCursorToast(string message, int x, int y)
@@ -451,155 +454,27 @@ namespace App1
             toast.Activate();
         }
 
-        private void ShowPage(UIElement page)
-        {
-            CoordinatePage.Visibility = Visibility.Collapsed;
-            ClickScriptPage.Visibility = Visibility.Collapsed;
-            SettingsPage.Visibility = Visibility.Collapsed;
+        private static int ParseInt(string text, int defaultValue)
+            => int.TryParse(text, out int v) ? v : defaultValue;
 
-            page.Visibility = Visibility.Visible;
+        // ── WINDOW STATE ──────────────────────────────────────────────────────
+
+        private void MinimizeWindow()
+        {
+            IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            ShowWindow(hwnd, SW_MINIMIZE);
         }
 
-        private void CreateScriptButton_Click(object sender, RoutedEventArgs e)
+        private void RestoreWindow()
         {
-            string scriptName = ScriptNameTextBox.Text.Trim();
-
-            if (string.IsNullOrWhiteSpace(scriptName))
-            {
-                MousePoint point = MouseService.GetCursorPosition();
-                ShowCursorToast("Vui lòng nhập tên kịch bản", point.X, point.Y);
-                return;
-            }
-
-            _currentScriptName = scriptName;
-
-            ClickSteps.Clear();
-            LogTextBox.Text = "";
-
-            InputXTextBox.Text = "0";
-            InputYTextBox.Text = "0";
-            InputDelayTextBox.Text = "0";
-            LoopCountTextBox.Text = "1";
-
-            CurrentScriptNameTextBlock.Text = $"Kịch bản: {_currentScriptName}";
-
-            CreateScriptPanel.Visibility = Visibility.Collapsed;
-            ScriptEditorPanel.Visibility = Visibility.Visible;
-
-            AddLog($"Đã tạo kịch bản: {_currentScriptName}");
+            IntPtr hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            ShowWindow(hwnd, SW_RESTORE);
         }
 
-        private void NewScriptButton_Click(object sender, RoutedEventArgs e)
-        {
-            StopScript();
+        private const int SW_MINIMIZE = 6;
+        private const int SW_RESTORE = 9;
 
-            _currentScriptName = "";
-            ScriptNameTextBox.Text = "";
-
-            ClickSteps.Clear();
-            LogTextBox.Text = "";
-
-            CreateScriptPanel.Visibility = Visibility.Visible;
-            ScriptEditorPanel.Visibility = Visibility.Collapsed;
-        }
-
-        private void AddDelayButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(_currentScriptName))
-            {
-                AddLog("Chưa có kịch bản. Hãy tạo kịch bản trước.");
-                return;
-            }
-
-            int delayMs = ParseInt(InputDelayTextBox.Text, 0);
-
-            AddDelayStep(delayMs);
-            AddLog($"Thêm Delay: {delayMs}ms");
-        }
-
-        private void AddPointButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(_currentScriptName))
-            {
-                AddLog("Chưa có kịch bản. Hãy tạo kịch bản trước.");
-                return;
-            }
-
-            int x = ParseInt(InputXTextBox.Text, 0);
-            int y = ParseInt(InputYTextBox.Text, 0);
-            int delayMs = ParseInt(InputDelayTextBox.Text, 0);
-
-            AddClickStep(x, y, delayMs);
-            AddLog($"Thêm Click thủ công: X={x}, Y={y}, Delay sau click={delayMs}ms");
-        }
-
-        private void DeleteStepButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not Button button)
-            {
-                return;
-            }
-
-            int id = ParseInt(button.Tag?.ToString() ?? "", -1);
-
-            ClickStep? target = null;
-
-            foreach (ClickStep step in ClickSteps)
-            {
-                if (step.Id == id)
-                {
-                    target = step;
-                    break;
-                }
-            }
-
-            if (target != null)
-            {
-                ClickSteps.Remove(target);
-                RefreshStepIndexes();
-                AddLog($"Đã xóa điểm click ID={id}");
-            }
-        }
-
-        private void RunScriptButton_Click(object sender, RoutedEventArgs e)
-        {
-            ToggleRunScript();
-        }
-
-        private void ClearLogButton_Click(object sender, RoutedEventArgs e)
-        {
-            LogTextBox.Text = "";
-        }
-
-        private void ClearListButton_Click(object sender, RoutedEventArgs e)
-        {
-            ClickSteps.Clear();
-            AddLog("Đã xóa toàn bộ điểm click trong kịch bản.");
-        }
-
-        private void StartStopButton_Click(object sender, RoutedEventArgs e)
-        {
-            ToggleTracking();
-        }
-
-        private void CopyButton_Click(object sender, RoutedEventArgs e)
-        {
-            CopyCurrentCoordinate();
-        }
-
-        private void CoordinateMenuButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowPage(CoordinatePage);
-        }
-
-        private void ClickScriptMenuButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowPage(ClickScriptPage);
-        }
-
-        private void SettingsMenuButton_Click(object sender, RoutedEventArgs e)
-        {
-            ShowPage(SettingsPage);
-        }
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     }
 }
